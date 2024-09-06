@@ -41,9 +41,9 @@ type model struct {
 	quitting bool
 }
 
-var BASE_MODEL model
-
 type item string
+
+var wheelsURL = make(map[string]string)
 
 func (i item) FilterValue() string { return "" }
 
@@ -85,7 +85,6 @@ func listPackages(cmd *cobra.Command, args []string) []list.Item {
 
 	url_replacement := []string{"{PACKAGE}", args[0]}
 	url := strings.NewReplacer(url_replacement...).Replace(PYPI_SIMPLE_URL)
-	//fmt.Println("Fetching from " + url.Replace(PYPI_SIMPLE_URL))
 	fmt.Println("Fetching from " + url)
 
 	client := &http.Client{}
@@ -100,7 +99,6 @@ func listPackages(cmd *cobra.Command, args []string) []list.Item {
 
 	defer response.Body.Close()
 
-	//body, err := io.ReadAll(response.Body)
 	if err != nil {
 		log.Fatal("Oh no....", err)
 	}
@@ -113,11 +111,11 @@ func listPackages(cmd *cobra.Command, args []string) []list.Item {
 	findVersion = func(n *html.Node) {
 		if n.Type == html.ElementNode && n.Data == "a" {
 			versions = append(versions, item(n.FirstChild.Data))
-			//for _, a := range n.Attr {
-			////fmt.Println(a.Key + " -- " + a.Val)
-			////a.Key
-			//fmt.Println(a, n.FirstChild.Data)
-			//}
+			for _, a := range n.Attr {
+				if a.Key == "href" {
+					wheelsURL[n.FirstChild.Data] = a.Val
+				}
+			}
 		}
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			findVersion(c)
@@ -156,7 +154,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	if m.choice != "" {
-		return quitTextStyle.Render(fmt.Sprintf("%s? Sounds good to me.", m.choice))
+		//return quitTextStyle.Render(fmt.Sprintf("Wheel : %s -- \nURL : %s", m.choice, wheelsURL[m.choice]))
+		fmt.Sprintf("---> URL : ", wheelsURL[m.choice])
+		DownloadWheel(wheelsURL[m.choice])
+		return quitTextStyle.Render(fmt.Sprintf("URL : %s", wheelsURL[m.choice]))
 	}
 	if m.quitting {
 		return quitTextStyle.Render("Not hungry? That’s cool.")
@@ -165,10 +166,9 @@ func (m model) View() string {
 }
 
 func main(cmd *cobra.Command, args []string) {
-	//p := tea.NewProgram(initialModel())
 	versions := listPackages(cmd, args)
 
-	l := list.New(versions, itemDelegate{}, 50, 14)
+	l := list.New(versions, itemDelegate{}, 50, 34)
 	l.Title = "Which wheels would you like to download ?"
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(true)
@@ -178,4 +178,25 @@ func main(cmd *cobra.Command, args []string) {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
+}
+
+func DownloadWheel(url string) error {
+	// Get the data
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Create the file
+	out, err := os.Create("/tmp/numpy_wheel.whl")
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	// Write the body to file
+	_, err = io.Copy(out, resp.Body)
+	return err
+
 }
