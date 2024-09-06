@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
@@ -33,6 +34,13 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 }
 
+// Spinner bit
+
+type spinnerModel struct {
+	spinner spinner.Model
+}
+
+// List model bit
 type model struct {
 	list     list.Model
 	cursor   int
@@ -45,7 +53,7 @@ type item string
 
 var wheelsURL = make(map[string]string)
 
-func (i item) FilterValue() string { return "" }
+func (i item) FilterValue() string { return string(i) }
 
 type itemDelegate struct{}
 
@@ -155,8 +163,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	if m.choice != "" {
 		//return quitTextStyle.Render(fmt.Sprintf("Wheel : %s -- \nURL : %s", m.choice, wheelsURL[m.choice]))
-		fmt.Sprintf("---> URL : ", wheelsURL[m.choice])
-		DownloadWheel(wheelsURL[m.choice])
+
+		DownloadWheel(m.choice, wheelsURL[m.choice])
 		return quitTextStyle.Render(fmt.Sprintf("URL : %s", wheelsURL[m.choice]))
 	}
 	if m.quitting {
@@ -180,7 +188,7 @@ func main(cmd *cobra.Command, args []string) {
 	}
 }
 
-func DownloadWheel(url string) error {
+func DownloadWheel(filename, url string) error {
 	// Get the data
 	resp, err := http.Get(url)
 	if err != nil {
@@ -189,7 +197,7 @@ func DownloadWheel(url string) error {
 	defer resp.Body.Close()
 
 	// Create the file
-	out, err := os.Create("/tmp/numpy_wheel.whl")
+	out, err := os.Create("/tmp/" + filename)
 	if err != nil {
 		return err
 	}
