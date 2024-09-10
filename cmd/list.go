@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"net/http"
 
@@ -34,12 +35,6 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 }
 
-// Spinner bit
-
-type spinnerModel struct {
-	spinner spinner.Model
-}
-
 // List model bit
 type model struct {
 	list     list.Model
@@ -47,6 +42,7 @@ type model struct {
 	choice   string
 	selected map[int]struct{}
 	quitting bool
+	spinner  spinner.Model
 }
 
 type item string
@@ -134,7 +130,8 @@ func listPackages(cmd *cobra.Command, args []string) []list.Item {
 }
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return m.spinner.Tick
+	//return nil
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -154,6 +151,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		}
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 	}
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
@@ -163,12 +164,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	if m.choice != "" {
 		//return quitTextStyle.Render(fmt.Sprintf("Wheel : %s -- \nURL : %s", m.choice, wheelsURL[m.choice]))
+		path, err := DownloadWheel(m.choice, wheelsURL[m.choice])
+		if err != nil {
+			quitTextStyle.Render("Oh no could not download wheel")
+		}
+		time.Sleep(time.Second * 5)
+		return quitTextStyle.Render(fmt.Sprintf("%s Wheel downloaded at %s", m.spinner.View(), path))
 
-		DownloadWheel(m.choice, wheelsURL[m.choice])
-		return quitTextStyle.Render(fmt.Sprintf("URL : %s", wheelsURL[m.choice]))
 	}
 	if m.quitting {
-		return quitTextStyle.Render("Not hungry? That’s cool.")
+		return quitTextStyle.Render("Bye !")
 	}
 	return "\n" + m.list.View()
 }
@@ -177,10 +182,12 @@ func main(cmd *cobra.Command, args []string) {
 	versions := listPackages(cmd, args)
 
 	l := list.New(versions, itemDelegate{}, 50, 34)
-	l.Title = "Which wheels would you like to download ?"
+	l.Title = fmt.Sprintf("Which wheels for %s would you like to download ?", args[0])
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(true)
-	m := model{list: l}
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	m := model{list: l, spinner: s}
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
@@ -188,23 +195,23 @@ func main(cmd *cobra.Command, args []string) {
 	}
 }
 
-func DownloadWheel(filename, url string) error {
+func DownloadWheel(filename, url string) (string, error) {
 	// Get the data
 	resp, err := http.Get(url)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
 
 	// Create the file
 	out, err := os.Create("/tmp/" + filename)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer out.Close()
 
 	// Write the body to file
 	_, err = io.Copy(out, resp.Body)
-	return err
+	return "/tmp/" + filename, err
 
 }
