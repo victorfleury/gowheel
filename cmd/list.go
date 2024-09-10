@@ -10,11 +10,11 @@ import (
 	"net/http"
 
 	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/html"
+	dl "gowheel/internal/pkg/dl"
 )
 
 var PYPI_SIMPLE_URL = "https://pypi.org/simple/{PACKAGE}/"
@@ -34,12 +34,6 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 }
 
-// Spinner bit
-
-type spinnerModel struct {
-	spinner spinner.Model
-}
-
 // List model bit
 type model struct {
 	list     list.Model
@@ -47,6 +41,7 @@ type model struct {
 	choice   string
 	selected map[int]struct{}
 	quitting bool
+	path     string
 }
 
 type item string
@@ -152,6 +147,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if ok {
 				m.choice = string(i)
 			}
+			path, err := dl.DownloadWheel(wheelsURL[m.choice])
+			if err != nil {
+				fmt.Println("Oh no")
+			}
+			m.path = path
 			return m, tea.Quit
 		}
 	}
@@ -162,13 +162,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	if m.choice != "" {
-		//return quitTextStyle.Render(fmt.Sprintf("Wheel : %s -- \nURL : %s", m.choice, wheelsURL[m.choice]))
+		//if err != nil {
+		//quitTextStyle.Render("Oh no could not download wheel")
+		//}
+		return quitTextStyle.Render(fmt.Sprintf("Wheel downloaded at %s", m.path))
 
-		DownloadWheel(m.choice, wheelsURL[m.choice])
-		return quitTextStyle.Render(fmt.Sprintf("URL : %s", wheelsURL[m.choice]))
 	}
 	if m.quitting {
-		return quitTextStyle.Render("Not hungry? That’s cool.")
+		return quitTextStyle.Render("Bye !")
 	}
 	return "\n" + m.list.View()
 }
@@ -177,34 +178,14 @@ func main(cmd *cobra.Command, args []string) {
 	versions := listPackages(cmd, args)
 
 	l := list.New(versions, itemDelegate{}, 50, 34)
-	l.Title = "Which wheels would you like to download ?"
+	l.Title = fmt.Sprintf("Which wheels for %s would you like to download ?", args[0])
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(true)
+
 	m := model{list: l}
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
-}
-
-func DownloadWheel(filename, url string) error {
-	// Get the data
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	// Create the file
-	out, err := os.Create("/tmp/" + filename)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	// Write the body to file
-	_, err = io.Copy(out, resp.Body)
-	return err
-
 }
